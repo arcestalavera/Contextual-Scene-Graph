@@ -24,8 +24,8 @@ class Generator(nn.Module):
         img_shape = x.shape
         ones = Variable(torch.ones(
             (img_shape[0], 1, img_shape[2], img_shape[3])).cuda())
-        print("one: " + str(ones.shape))
-        print("MASK: " + str(mask.shape))
+        # print("one: " + str(ones.shape))
+        # print("MASK: " + str(mask.shape))
         # concatenate input and mask
         net_in = torch.cat([x, ones, ones * mask], dim=1)
 

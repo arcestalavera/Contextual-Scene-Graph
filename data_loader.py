@@ -91,7 +91,7 @@ class VGSceneLoader(object):
         if len(obj_idxs) > self.max_objects - 1:
             obj_idxs = random.sample(obj_idxs, self.max_objects)
 
-        # if objects with relationships are less than the max objects, get from objects w/o relationship
+        # if objects with relationships are less than the max objects, sample from objects w/o relationship
         if len(obj_idxs) < self.max_objects - 1 and self.use_orphaned_objects:
             num_to_add = self.max_objects - 1 - len(obj_idxs)
             num_to_add = min(num_to_add, len(obj_idxs_without_rels))

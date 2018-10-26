@@ -39,7 +39,6 @@ def crop_bbox_batch(feats, bbox, bbox_to_feats, HH, WW=None, backend='cudnn'):
     crop from feats[bbox_to_feats[i]].
   """
   if backend == 'cudnn':
-    print("CUDNN")
     return crop_bbox_batch_cudnn(feats, bbox, bbox_to_feats, HH, WW)
   print("IM HERE NOW")
   N, C, H, W = feats.size()
@@ -96,6 +95,7 @@ def crop_bbox_batch_cudnn(feats, bbox, bbox_to_feats, HH, WW=None):
   # permutation from all_idx.
   all_idx = torch.cat(all_idx, dim=0)
   eye = torch.arange(0, B).type_as(all_idx)
+  
   if (all_idx == eye).all():
     return crops
   return crops[_invperm(all_idx)]

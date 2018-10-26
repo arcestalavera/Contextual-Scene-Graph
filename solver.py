@@ -12,6 +12,7 @@ from tqdm import tqdm
 # from model import Sg2ImModel
 from cont_model import ContextualSceneModel, ContextualSceneCritic
 from scene_graph.discriminators import PatchDiscriminator, AcCropDiscriminator
+from scene_graph.bilinear import crop_bbox_batch
 from losses import get_gan_losses, random_interpolate
 
 
@@ -27,7 +28,6 @@ class Solver(object):
         # Load Vocab for model and data loader
         self.vocab = vocab
         self.foreground_objs = foreground_objs['foreground_idx']
-        print("Foreground Objects: " + str(len(foreground_objs)))
 
         # Build tensorboard if use
         self.build_model()
@@ -79,8 +79,8 @@ class Solver(object):
 
         # Loss
         self.gan_g_loss, self.gan_d_loss = get_gan_losses(self.gan_loss_type)
-        self.critic_g_loss, self.critic_d_loss = get_gan_losses(
-            self.critic_loss_type)
+        self.critic_g_loss, self.critic_d_loss = get_gan_losses(self.critic_gan_loss)
+        self.critic_gp_loss = get_gan_losses(self.critic_gp_loss)
 
         # Mode of Model
         if self.init_iterations >= self.eval_mode_after:
@@ -131,7 +131,7 @@ class Solver(object):
             self.model_save_path, '{}_D_IMG.pth'.format(self.pretrained_model))))
         self.obj_discriminator.load_state_dict(torch.load(os.path.join(
             self.model_save_path, '{}_D_OBJ.pth'.format(self.pretrained_model))))
-        self.img_discriminator.load_state_dict(torch.load(os.path.join(
+        self.critic.load_state_dict(torch.load(os.path.join(
             self.model_save_path, '{}_C.pth'.format(self.pretrained_model))))
 
         print('loaded trained models (step: {})..!'.format(self.pretrained_model))
@@ -249,28 +249,32 @@ class Solver(object):
                 step_vars = (imgs, objs, boxes, obj_to_img, predicates, masks)
 
                 # Foreground objects
+                print("OBJS: " + str(objs))
                 f_inds = [i for i, obj in enumerate(
                     objs) if obj in self.foreground_objs]
                 f_boxes = boxes[f_inds]
+                print("INDS: " + str(f_inds))
+                print("OBJ_TO_IMG: " + str(f_obj_to_img))
                 f_obj_to_img = obj_to_img[f_inds]
 
-                # Logging
-                loss = {}
-
+                # Build Masks for Contextual Attention Module
+                ca_masks = build_masks(imgs, f_boxes, f_obj_to_img)
+                ca_masks = to_var(ca_masks)
+                
+                patch_masks = crop_bbox_batch(ca_masks, f_boxes, f_obj_to_img, self.patch_size)
+                
                 # Forward to Model
                 model_boxes = boxes
                 model_masks = masks
                 model_out = self.generator(
-                    objs, triples, obj_to_img, f_obj_to_img, f_boxes, boxes_gt=model_boxes, masks_gt=model_masks)
+                    objs, triples, obj_to_img, ca_masks, boxes_gt=model_boxes, masks_gt=model_masks)
 
                 imgs_pred, _, _, _ = model_out
 
                 # build input for critics
-                fake_local_patches = extract_patches(
-                    imgs_pred, f_boxes, f_obj_to_img, self.patch_size, self.batch_size)
-                real_local_patches = extract_patches(
-                    imgs, f_boxes, f_obj_to_img, self.patch_size, self.batch_size)
-
+                fake_local_patches = crop_bbox_batch(imgs_pred, f_boxes, f_obj_to_img, self.patch_size)
+                real_local_patches = crop_bbox_batch(imgs, f_boxes, f_obj_to_img, self.patch_size)
+                
                 # Forward to Critic
                 critic_pred = None
                 if self.critic is not None:
@@ -280,7 +284,7 @@ class Solver(object):
 
                     # Feed input to the critic to get scores
                     local_critic_out, global_critic_out = self.critic(
-                        local_vectors, global_vectors, f_obj_to_img, self.batch_size)
+                        local_vectors, global_vectors, f_obj_to_img)
 
                     # Split scores to (fake, real)
                     fake_local_pred, real_local_pred = torch.split(
@@ -289,18 +293,23 @@ class Solver(object):
                         global_critic_out, self.batch_size, dim=0)
 
                     critic_pred = (fake_local_pred, real_local_pred, fake_global_pred, real_global_pred)
+                    
                     # for gradient penalty of critic
                     gp_vectors = (real_local_patches, fake_local_patches)
+                    gp_masks = (ca_masks, patch_masks)
 
                 # Generator Step
                 total_loss, losses = self.generator_step(step_vars, model_out, critic_pred)
+
+                # Logging
+                loss = {}
 
                 loss['G/total_loss'] = total_loss.data.item()
                 loss = self.log_losses(loss, 'G', losses)
 
                 # Discriminator Step
                 total_loss, dis_obj_losses, dis_img_losses, critic_losses = self.discriminator_step(
-                    imgs_pred, step_vars, critic_pred, gp_vectors)
+                    imgs_pred, step_vars, f_obj_to_img, critic_pred, gp_vectors, gp_masks)
 
                 loss['D/total_loss'] = total_loss.data.item()
                 loss = self.log_losses(loss, 'D', dis_obj_losses)
@@ -332,18 +341,20 @@ class Solver(object):
                 # Save model checkpoints
                 if (iter_ctr + 1) % self.model_save_step == 0:
                     torch.save(self.generator.state_dict(),
-                               os.path.join(self.model_save_path, '{}_{}_{}_G.pth'.format(iter_ctr + 1, e, i + 1)))
+                               os.path.join(self.model_save_path, '{}_G.pth'.format(iter_ctr + 1)))
                     torch.save(self.obj_discriminator.state_dict(),
-                               os.path.join(self.model_save_path, '{}_{}_{}_D_OBJ.pth'.format(iter_ctr + 1, e, i + 1)))
+                               os.path.join(self.model_save_path, '{}_D_OBJ.pth'.format(iter_ctr + 1)))
                     torch.save(self.img_discriminator.state_dict(),
-                               os.path.join(self.model_save_path, '{}_{}_{}_D_IMG.pth'.format(iter_ctr + 1, e, i + 1)))
+                               os.path.join(self.model_save_path, '{}_D_IMG.pth'.format(iter_ctr + 1)))
+                    torch.save(self.critic.state_dict(),
+                               os.path.join(self.model_save_path, '{}_C_IMG.pth'.format(iter_ctr + 1)))
 
                 if (iter_ctr + 1) % self.sample_step == 0:
                     self.sample_images(fixed_batch, e, i)
 
                 iter_ctr += 1
 
-    def discriminator_step(self, imgs_pred, step_vars, critic_pred, gp_vectors):
+    def discriminator_step(self, imgs_pred, step_vars, f_obj_to_img, critic_pred, gp_vectors, gp_masks):
         ac_loss_real = None
         ac_loss_fake = None
         d_obj_losses = None
@@ -388,22 +399,30 @@ class Solver(object):
             critic_losses = LossManager()
             # Local Loss
             local_loss = self.critic_d_loss(real_local_pred, fake_local_pred)
-            critic_losses.add_loss(local_loss, 'c_local_loss')
-
+            
             # Global Loss
             global_loss = self.critic_d_loss(real_global_pred, fake_global_pred)
-            critic_losses.add_loss(global_loss, 'c_global_loss')
+            
+            critic_losses.add_loss(global_loss + local_loss, 'c_gan_loss')
 
             if gp_vectors is not None:
                 # Gradient Penalty Loss
                 real_local_patches, fake_local_patches = gp_vectors
-                # Interpolate thingy here
-                print("LOCAL: ")
-                local_interpolate = random_interpolate(real_local_patches, fake_local_patches)
-                print("GLOBAL: ")
-                global_interpolate = random_interpolate(imgs, imgs_pred)
-                # GP Loss Here
+                global_masks, local_masks = gp_masks
 
+                # Interpolate Images
+                local_interpolate = random_interpolate(real_local_patches, fake_local_patches)
+                global_interpolate = random_interpolate(imgs, imgs_pred)
+
+                # GP Loss
+                # Forward interpolated images to the critic
+                local_gp_out, global_gp_out = self.critic(local_interpolate, global_interpolate, f_obj_to_img)
+
+                local_gp = self.critic_gp_loss(local_interpolate, local_gp_out, mask=local_masks, f_obj_to_img = f_obj_to_img)
+                global_gp = self.critic_gp_loss(global_interpolate, global_gp_out, mask=global_masks)
+
+                critic_losses.add_loss(self.critic_gp_weight * (local_gp + global_gp), 'c_gp_loss')
+            
             self.reset_grad()
             critic_losses.total_loss.backward()
             self.critic_optimizer.step()
@@ -426,8 +445,6 @@ class Solver(object):
             l1_pixel_weight = 0
 
         # Local patches for hand picked foreground objects
-        print("OBJS: " + str(objs))
-
         l1_pixel_loss = F.l1_loss(imgs_pred, imgs)
 
         total_loss = self.add_loss(total_loss, l1_pixel_loss, losses, 'L1_pixel_loss',
@@ -474,14 +491,13 @@ class Solver(object):
             
             # Local Patch Loss
             local_loss = self.critic_g_loss(fake_local_pred)
-            print("LOCAL LOSS: " + str(local_loss))
-            total_loss = self.add_loss(total_loss, local_loss, losses,
-                                       'g_local_loss')
-
+            
             # Global Loss
             global_loss = self.critic_g_loss(fake_global_pred)
-            total_loss = self.add_loss(total_loss, global_loss, losses,
-                                       'g_global_loss')
+            
+            critic_loss = self.critic_global_weight * global_loss + local_loss
+            total_loss = self.add_loss(total_loss, self.critic_g_weight * critic_loss, losses,
+                                       'g_critic_loss')
 
         losses['total_loss'] = total_loss.item()
 

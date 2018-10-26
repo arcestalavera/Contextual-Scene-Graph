@@ -1,30 +1,6 @@
 import numpy as np
 import torch
 
-def reduce_mean(x, axis, keep_dims=True):
-    """
-    # reduce_mean function of tensorflow given the input x
-    """
-    if(type(axis) == list):
-        for dim in axis:
-            x = torch.mean(x, dim=dim, keepdim=keep_dims)
-    else:
-        x = torch.mean(x, dim=axis, keepdim=keep_dims)
-
-    return x
-
-def reduce_sum(x, axis):
-    """
-    # reduce_sum function of tensorflow given the input x
-    """
-    if(type(axis) == list):
-        for dim in axis:
-            x = torch.sum(x, dim=dim, keepdim=True)
-    else:
-        x = torch.sum(x, dim=axis)
-
-    return x
-
 def flow_to_image(flow):
     """Transfer flow map to image.
     Part of code forked from flownet.

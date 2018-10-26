@@ -117,7 +117,11 @@ if __name__ == '__main__':
                         type=float)  # multiplied by d_loss_weight
 
     # Critics
-    parser.add_argument('--critic_loss_type', default='wgan')
+    parser.add_argument('--critic_gan_loss', default='wgan')
+    parser.add_argument('--critic_gp_loss', default='gp')
+    parser.add_argument('--critic_g_weight', default=0.001, type=float)
+    parser.add_argument('--critic_global_weight', default=1.0, type=float)
+    parser.add_argument('--critic_gp_weight', default=10.0, type=float)
     
     # Dataset options common to both VG and COCO
     parser.add_argument('--image_size', default='64,64', type=int_tuple)

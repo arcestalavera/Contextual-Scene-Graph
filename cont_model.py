@@ -33,8 +33,7 @@ class ContextualSceneModel(nn.Module):
 
         # self.foreground_objs = kwargs['foreground_objs']
 
-    def forward(self, objs, triples, obj_to_img=None, f_obj_to_img=None,
-                f_boxes=None, boxes_gt=None, masks_gt=None, mode = 'train'):
+    def forward(self, objs, triples, obj_to_img=None, ca_masks=None, boxes_gt=None, masks_gt=None, mode = 'train'):
         
         if(mode == 'train'):
             volatile = False
@@ -47,11 +46,11 @@ class ContextualSceneModel(nn.Module):
 
         # Build masks for the Contextual Attention
         # Input for CAModel: [SGModel out, ones, masks]
-        masks = utils.build_masks(img, f_boxes, f_obj_to_img)
-        masks = utils.to_var(masks, volatile = volatile)
-        
+        # masks = utils.build_masks(img, f_boxes, f_obj_to_img)
+        # masks = utils.to_var(masks, volatile = volatile)
+        masks = ca_masks
         ones = torch.ones(img.shape[0], 1, img.shape[2], img.shape[3])
-        ones = utils.to_var(ones, volatile = volatile)
+        ones = utils.to_var(ones)
         
         # need to downsample masks because CA module works on encoded image
         res_masks = F.interpolate(masks, scale_factor = 0.25, mode = 'nearest')
@@ -69,10 +68,8 @@ class ContextualSceneCritic(nn.Module):
         self.local_critic = ContextualCritic(is_local = True)
         self.global_critic = ContextualCritic(is_local = False)
 
-    def forward(self, local_x, global_x, f_obj_to_img, batch_size):
-        local_out = self.local_critic(local_x, True, f_obj_to_img, batch_size)
-        global_out = self.global_critic(global_x, False)
-
-        print("GLOBAL: " + str(global_out.shape))
+    def forward(self, local_x, global_x, f_obj_to_img):
+        local_out = self.local_critic(local_x, f_obj_to_img)
+        global_out = self.global_critic(global_x)
 
         return local_out, global_out

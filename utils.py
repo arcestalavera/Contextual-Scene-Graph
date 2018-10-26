@@ -40,28 +40,30 @@ def extract_patches(imgs, boxes, obj_to_img, patch_size=32, batch_size = None):
   img_patches = crop_bbox_batch(imgs, boxes, obj_to_img, patch_size)
 
   # Check if some image does not have patches
-  print("{} VS. {}".format(len(set(obj_to_img)), batch_size))
-  if(len(set(obj_to_img)) != batch_size):
-    print("I AM NOT COMPLETE")
+  # print("{} VS. {}".format(len(set(obj_to_img.data.cpu().numpy())), batch_size))
+
+  # comp_obj_to_img = None
+  # if(len(set(obj_to_img.data.cpu().numpy())) != batch_size):
+  #   print("I AM NOT COMPLETE")
+  #   _, comp_obj_to_img = complete_patches(imgs, img_patches, obj_to_img, patch_size, batch_size)
 
   return img_patches
-
 
 def build_masks(imgs, boxes, obj_to_img):
   H, W = imgs.shape[2], imgs.shape[3]
   masks = torch.zeros((imgs.shape[0], 1, H, W))
   
   # create masks
-  print("MASK STATS")
-  print("BOXES: " + str(boxes.shape))
-  print("OBJ TO IMG: " + str(obj_to_img.shape))
+  # print("MASK STATS")
+  # print("BOXES: " + str(boxes.shape))
+  # print("OBJ TO IMG: " + str(obj_to_img.shape))
   for i in range(boxes.shape[0]):
     img_ind = obj_to_img[i]
     
     box = torch.trunc(boxes[i] * H).int()
     masks[img_ind, :, box[1]:box[3] + 1, box[0]:box[2] + 1] = 1
 
-  print("MASKS: " + str(masks.shape))
+  # print("MASKS: " + str(masks.shape))
   return masks
   
 
@@ -169,7 +171,30 @@ def timeit(msg, should_time=True):
     duration = (t1 - t0) * 1000.0
     print('%s: %.2f ms' % (msg, duration))
 
+def reduce_mean(x, axis, keep_dims=True):
+    """
+    # reduce_mean function of tensorflow given the input x
+    """
+    if(type(axis) == list):
+        for dim in axis:
+            x = torch.mean(x, dim=dim, keepdim=keep_dims)
+    else:
+        x = torch.mean(x, dim=axis, keepdim=keep_dims)
 
+    return x
+
+def reduce_sum(x, axis):
+    """
+    # reduce_sum function of tensorflow given the input x
+    """
+    if(type(axis) == list):
+        for dim in axis:
+            x = torch.sum(x, dim=dim, keepdim=True)
+    else:
+        x = torch.sum(x, dim=axis)
+
+    return x
+    
 class LossManager(object):
   def __init__(self):
     self.total_loss = None

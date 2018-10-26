@@ -95,7 +95,7 @@ class AttentionModule(nn.Module):
         # create batch for mm
         mm = []
         for i in range(m.shape[0]):
-            mm.append(helper.reduce_mean(m[i], axis = [0, 2, 3], keep_dims = True))
+            mm.append(utils.reduce_mean(m[i], axis = [0, 2, 3], keep_dims = True))
 
         mm = torch.cat(mm)
 
@@ -120,7 +120,7 @@ class AttentionModule(nn.Module):
             wi = wi[0] # 
 
             wi_normed = wi / \
-                torch.max(torch.sqrt(helper.reduce_sum(
+                torch.max(torch.sqrt(utils.reduce_sum(
                     wi ** 2, axis=[0, 2, 3])), torch.FloatTensor([1e-4]).cuda())
             
             # print("wi_normed: " + str(wi_normed.shape))
@@ -190,7 +190,6 @@ class AttentionModule(nn.Module):
             flow = F.interpolate(flow, scale_factor=rate, mode='nearest')
 
         out = self.final_layers(y)
-        print("FINALLY OUT " + str(out.shape))
         return out, flow
 
     def extract_image_patches(self, image, kernel, stride):

@@ -3,3 +3,4 @@ logs/
 models/
 samples/
 config/
+*.pyc
