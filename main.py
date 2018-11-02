@@ -44,31 +44,37 @@ def main(config):
     mkdir(config.log_path)
     mkdir(config.model_save_path)
     mkdir(config.sample_path)
+    mkdir(config.test_path)
 
     # Load Vocab and Handpicked Foreground Objects
     vocab = json.load(open(config.vocab_json, 'r'))
     foreground_objs = json.load(open(config.foreground_json, 'r'))
+    ca_weights = None
+    if config.ca_weights is not None:
+    	ca_weights = json.load(open(config.ca_weights, 'r'))
 
     # Data Loaders
     H, W = config.image_size
-    train_loader = get_loader(vocab, config.images_path, config.train_h5,
+    train_loader = get_loader(vocab, foreground_objs['foreground_idx'], config.images_path, config.train_h5,
                               config.batch_size, image_size = (H, W), mode = 'train')
-    test_loader = get_loader(vocab, config.images_path, config.test_h5,
+    test_loader = get_loader(vocab, foreground_objs['foreground_idx'], config.images_path, config.test_h5,
                             config.batch_size, image_size = (H, W), mode = 'test')
 
     # Solver
-    solver = Solver(vocab, foreground_objs, train_loader, test_loader, vars(config))
+    solver = Solver(vocab, foreground_objs, ca_weights, train_loader, test_loader, vars(config))
 
     if config.mode == 'train':
         solver.train()
     elif config.mode == 'test':
-        solver.test()
+    	pass
+    	solver.test(config.test_batch)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
     # Variables
     VG_DIR = 'vg'
+    CA_DIR = 'contextual_attention'
 
     # Scene Graph Model Generator
     # Set this to 0 to use no masks
@@ -84,6 +90,7 @@ if __name__ == '__main__':
     parser.add_argument('--activation', default='leakyrelu-0.2')
     parser.add_argument('--layout_noise_dim', default=32, type=int)
     parser.add_argument('--use_boxes_pred_after', default=-1, type=int)
+    parser.add_argument('--use_contextual', type=str2bool, default=True)
 
     # Generator losses
     parser.add_argument('--mask_loss_weight', default=0, type=float)
@@ -116,6 +123,10 @@ if __name__ == '__main__':
     parser.add_argument('--d_img_weight', default=1.0,
                         type=float)  # multiplied by d_loss_weight
 
+    # Contextual Attention
+    # parser.add_argument('--ca_weights', type=str, default=os.path.join(CA_DIR,'tf_weights.json'))
+    parser.add_argument('--ca_weights', type=str, default=None)
+
     # Critics
     parser.add_argument('--critic_gan_loss', default='wgan')
     parser.add_argument('--critic_gp_loss', default='gp')
@@ -136,7 +147,7 @@ if __name__ == '__main__':
         '--vg_image_dir', default=os.path.join(VG_DIR, 'images'))
     parser.add_argument('--train_h5', default=os.path.join(VG_DIR, 'train.h5'))
     parser.add_argument('--val_h5', default=os.path.join(VG_DIR, 'val.h5'))
-    parser.add_argument('--test_h5', default=os.path.join(VG_DIR, 'test.h5'))
+    parser.add_argument('--test_h5', default=os.path.join(VG_DIR, 'test2.h5'))
     parser.add_argument(
         '--vocab_json', default=os.path.join(VG_DIR, 'vocab.json'))
     parser.add_argument('--max_objects_per_image', default=10, type=int)
@@ -154,17 +165,19 @@ if __name__ == '__main__':
     parser.add_argument('--batch_size', type=int, default=5)
     parser.add_argument('--pretrained_model', type=str, default=None)
     parser.add_argument('--patch_size', type=int, default=32) 
-    
+
     # Misc
     parser.add_argument('--mode', type=str, default='train',
                         choices=['train', 'test'])
     parser.add_argument('--use_tensorboard', type=str2bool, default=True)
+    parser.add_argument('--test_batch', type=int, default=5)
 
     # Path
     parser.add_argument('--images_path', type=str, default=os.path.join(VG_DIR, 'images'))
     parser.add_argument('--log_path', type=str, default='./logs')
     parser.add_argument('--model_save_path', type=str, default='./models')
     parser.add_argument('--sample_path', type=str, default='./samples')
+    parser.add_argument('--test_path', type=str, default='./test samples')
 
 
     # Step size

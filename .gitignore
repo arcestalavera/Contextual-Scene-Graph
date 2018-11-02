@@ -3,4 +3,6 @@ logs/
 models/
 samples/
 config/
+test samples/
+tf_inpainting/
 *.pyc

@@ -1,0 +1,18 @@
+===================================
+image: 0
+man --- has ---> coat
+chair --- has ---> back
+man --- has ---> coat
+man --- wears ---> shirt
+board --- against ---> wall
+===================================
+===================================
+image: 1
+boy --- with ---> pant
+man --- has ---> jean
+man --- walking on ---> street
+boy --- walking on ---> street
+boy --- has ---> jacket
+building --- has ---> window
+building --- with ---> window
+===================================

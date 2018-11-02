@@ -8,18 +8,20 @@ from torchvision.utils import save_image
 from utils import *
 from data_loader import *
 from tqdm import tqdm
+from imageio import imwrite
 
 # from model import Sg2ImModel
 from cont_model import ContextualSceneModel, ContextualSceneCritic
 from scene_graph.discriminators import PatchDiscriminator, AcCropDiscriminator
 from scene_graph.bilinear import crop_bbox_batch
+from scene_graph.model import Sg2ImModel
 from losses import get_gan_losses, random_interpolate
 
 
 class Solver(object):
     DEFAULTS = {}
 
-    def __init__(self, vocab, foreground_objs, train_loader, test_loader, config):
+    def __init__(self, vocab, foreground_objs, ca_weights, train_loader, test_loader, config):
         # Data loader
         self.__dict__.update(Solver.DEFAULTS, **config)
         self.train_loader = train_loader
@@ -28,6 +30,7 @@ class Solver(object):
         # Load Vocab for model and data loader
         self.vocab = vocab
         self.foreground_objs = foreground_objs['foreground_idx']
+        self.ca_weights = ca_weights
 
         # Build tensorboard if use
         self.build_model()
@@ -38,6 +41,9 @@ class Solver(object):
         if self.pretrained_model:
             self.load_pretrained_model()
 
+        if self.ca_weights:
+            self.generator.load_ca_weights(self.ca_weights)
+        
     def build_model(self):
 
         # Generator = Scene Graph Model + Contextual Attention Module
@@ -54,11 +60,14 @@ class Solver(object):
             'normalization': self.normalization,
             'activation': self.activation,
             'mask_size': self.mask_size,
-            'layout_noise_dim': self.layout_noise_dim
+            'layout_noise_dim': self.layout_noise_dim,
+            # 'ca_weights': self.ca_weights,
         }
 
-        self.generator = ContextualSceneModel(**kwargs)
-
+        if(self.use_contextual):
+            self.generator = ContextualSceneModel(**kwargs)
+        else:
+            self.generator = Sg2ImModel(**kwargs)
         # Discriminators
         # OBJ Discriminator
         self.obj_discriminator = AcCropDiscriminator(vocab=self.vocab,
@@ -74,13 +83,15 @@ class Solver(object):
                                                     activation=self.d_activation,
                                                     padding=self.d_padding)
 
-        # Local Critic
-        self.critic = ContextualSceneCritic()
+        if(self.use_contextual):
+            # Local Critic
+            self.critic = ContextualSceneCritic()
 
         # Loss
         self.gan_g_loss, self.gan_d_loss = get_gan_losses(self.gan_loss_type)
-        self.critic_g_loss, self.critic_d_loss = get_gan_losses(self.critic_gan_loss)
-        self.critic_gp_loss = get_gan_losses(self.critic_gp_loss)
+        if(self.use_contextual):
+            self.critic_g_loss, self.critic_d_loss = get_gan_losses(self.critic_gan_loss)
+            self.critic_gp_loss = get_gan_losses(self.critic_gp_loss)
 
         # Mode of Model
         if self.init_iterations >= self.eval_mode_after:
@@ -92,7 +103,8 @@ class Solver(object):
 
         self.obj_discriminator.train()
         self.img_discriminator.train()
-        self.critic.train()
+        if(self.use_contextual):
+            self.critic.train()
 
         # Optimizers
         self.gen_optimizer = torch.optim.Adam(
@@ -101,20 +113,23 @@ class Solver(object):
             self.obj_discriminator.parameters(), lr=self.learning_rate)
         self.dis_img_optimizer = torch.optim.Adam(
             self.img_discriminator.parameters(), lr=self.learning_rate)
-        self.critic_optimizer = torch.optim.Adam(
-            self.critic.parameters(), lr=self.learning_rate)
+        if(self.use_contextual):
+            self.critic_optimizer = torch.optim.Adam(
+                self.critic.parameters(), lr=self.learning_rate)
 
         # Print networks
-        self.print_network(self.generator, 'Generator')
-        self.print_network(self.obj_discriminator, 'Object Discriminator')
-        self.print_network(self.img_discriminator, 'Image Discriminator')
-        self.print_network(self.critic, 'Critic')
+        # self.print_network(self.generator, 'Generator')
+        # self.print_network(self.obj_discriminator, 'Object Discriminator')
+        # self.print_network(self.img_discriminator, 'Image Discriminator')
+        # if(self.use_contextual):
+        #     self.print_network(self.critic, 'Critic')
 
         if torch.cuda.is_available():
             self.generator.cuda()
             self.obj_discriminator.cuda()
             self.img_discriminator.cuda()
-            self.critic.cuda()
+            if(self.use_contextual):
+                self.critic.cuda()
 
     def print_network(self, model, name):
         num_params = 0
@@ -131,8 +146,9 @@ class Solver(object):
             self.model_save_path, '{}_D_IMG.pth'.format(self.pretrained_model))))
         self.obj_discriminator.load_state_dict(torch.load(os.path.join(
             self.model_save_path, '{}_D_OBJ.pth'.format(self.pretrained_model))))
-        self.critic.load_state_dict(torch.load(os.path.join(
-            self.model_save_path, '{}_C.pth'.format(self.pretrained_model))))
+        if(self.use_contextual):
+            self.critic.load_state_dict(torch.load(os.path.join(
+                self.model_save_path, '{}_C_IMG.pth'.format(self.pretrained_model))))
 
         print('loaded trained models (step: {})..!'.format(self.pretrained_model))
 
@@ -222,9 +238,11 @@ class Solver(object):
 
             for i, batch in enumerate(tqdm(self.train_loader)):
                 if iter_ctr == self.eval_mode_after:
-                    self.generator.test()
+                    self.generator.eval()
                     self.gen_optimizer = torch.optim.Adam(
                         self.generator.parameters(), lr=self.learning_rate)
+                elif(iter_ctr < self.eval_mode_after):
+                    self.generator.train()
 
                 masks = None
                 if len(batch) == 6:
@@ -249,12 +267,9 @@ class Solver(object):
                 step_vars = (imgs, objs, boxes, obj_to_img, predicates, masks)
 
                 # Foreground objects
-                print("OBJS: " + str(objs))
                 f_inds = [i for i, obj in enumerate(
                     objs) if obj in self.foreground_objs]
                 f_boxes = boxes[f_inds]
-                print("INDS: " + str(f_inds))
-                print("OBJ_TO_IMG: " + str(f_obj_to_img))
                 f_obj_to_img = obj_to_img[f_inds]
 
                 # Build Masks for Contextual Attention Module
@@ -288,9 +303,9 @@ class Solver(object):
 
                     # Split scores to (fake, real)
                     fake_local_pred, real_local_pred = torch.split(
-                        local_critic_out, self.batch_size, dim=0)
+                        local_critic_out, imgs.shape[0], dim=0)
                     fake_global_pred, real_global_pred = torch.split(
-                        global_critic_out, self.batch_size, dim=0)
+                        global_critic_out, imgs.shape[0], dim=0)
 
                     critic_pred = (fake_local_pred, real_local_pred, fake_global_pred, real_global_pred)
                     
@@ -314,6 +329,7 @@ class Solver(object):
                 loss['D/total_loss'] = total_loss.data.item()
                 loss = self.log_losses(loss, 'D', dis_obj_losses)
                 loss = self.log_losses(loss, 'D', dis_img_losses)
+                loss = self.log_losses(loss, 'C', critic_losses)
 
                 # Print out log info
                 if (i + 1) % self.log_step == 0:
@@ -350,7 +366,7 @@ class Solver(object):
                                os.path.join(self.model_save_path, '{}_C_IMG.pth'.format(iter_ctr + 1)))
 
                 if (iter_ctr + 1) % self.sample_step == 0:
-                    self.sample_images(fixed_batch, e, i)
+                    self.sample_images(fixed_batch, iter_ctr)
 
                 iter_ctr += 1
 
@@ -508,33 +524,113 @@ class Solver(object):
 
         return total_loss, losses
 
-    def sample_images(self, batch, e=1, i=1):
-
+    def sample_images(self, batch, iter_ctr = 1):
         self.generator.eval()
-        objs, triples, obj_to_img, f_obj_to_img, f_boxes = batch
+        objs, triples, obj_to_img, ca_masks = batch
 
-        objs = to_var(objs, volatile=True)
-        triples = to_var(triples, volatile=True)
-        obj_to_img = to_var(obj_to_img, volatile=True)
+        with torch.no_grad():
+            objs = to_var(objs)
+            triples = to_var(triples)
+            obj_to_img = to_var(obj_to_img)
+            ca_masks = to_var(ca_masks)
 
-        fake_images, _, _, _ = self.generator(
-            objs, triples, obj_to_img, f_obj_to_img=f_obj_to_img, f_boxes=f_boxes, mode='test')
+            fake_images, _, _, _ = self.generator(
+                objs, triples, obj_to_img, ca_masks)
 
         save_image(imagenet_deprocess_batch(fake_images, convert_range=False),
-                   os.path.join(self.sample_path, '{}_{}_fake.png'.format(e, i + 1)), nrow=1, padding=0)
+                   os.path.join(self.sample_path, '{}_fake.png'.format(iter_ctr + 1)), nrow=1, padding=0)
         print('Translated images and saved into {}..!'.format(self.sample_path))
 
     def build_sample_images(self, data_loader):
         batch = next(iter(data_loader))
 
         if len(batch) == 6:
-            _, objs, boxes, triples, obj_to_img, _ = batch
+            imgs, objs, boxes, triples, obj_to_img, _ = batch
         elif len(batch) == 7:
-            _, objs, boxes, _, triples, obj_to_img, _ = batch
+            imgs, objs, boxes, _, triples, obj_to_img, _ = batch
 
         f_inds = [i for i, obj in enumerate(
             objs) if obj in self.foreground_objs]
         f_boxes = boxes[f_inds]
         f_obj_to_img = obj_to_img[f_inds]
 
-        return (objs, triples, obj_to_img, f_obj_to_img, f_boxes)
+        ca_masks = build_masks(imgs, f_boxes, f_obj_to_img)
+        ca_masks = to_var(ca_masks)
+
+        # build the graph thingy
+
+
+        return (objs, triples, obj_to_img, ca_masks)
+
+    def test(self, num_batch = None):
+        self.generator.eval()
+        if num_batch != None:
+            stop_test = num_batch
+        else:
+            stop_test = len(self.test_loader)
+
+        img_num = 0
+        graph_num = 0
+        for i, batch in enumerate(self.test_loader):
+            if len(batch) == 6:
+                imgs, objs, boxes, triples, obj_to_img, triple_to_img = batch
+            elif len(batch) == 7:
+                imgs, objs, boxes, _, triples, obj_to_img, triple_to_img = batch
+            
+            with torch.no_grad():
+                objs = to_var(objs)
+                triples = to_var(triples)
+                obj_to_img = to_var(obj_to_img)
+
+                # Foreground objects
+                f_inds = [i for i, obj in enumerate(
+                    objs) if obj in self.foreground_objs]
+                f_boxes = boxes[f_inds]
+                f_obj_to_img = obj_to_img[f_inds]
+
+                ca_masks = build_masks(imgs, f_boxes, f_obj_to_img)
+                ca_masks = to_var(ca_masks)        
+
+                if(self.use_contextual):
+                    fake_images, _, _, _ = self.generator(
+                        objs, triples, obj_to_img, ca_masks)
+                else:
+                    fake_images, _, _, _ = self.generator(
+                        objs, triples, obj_to_img)
+                
+            # Save Images
+            fake_images = imagenet_deprocess_batch(fake_images, convert_range = True)
+            for j in range(fake_images.shape[0]):
+                img = fake_images[j].numpy().transpose(1, 2, 0)
+                img_path = os.path.join(self.test_path, "fake_{}.png".format(img_num))
+                imwrite(img_path, img)
+                img_num += 1
+
+            graph_num = self.export_relationship_graph(objs, triples, triple_to_img, graph_num)
+            if(i + 1 >= stop_test):
+                break
+
+        print('Translated images and saved into {}..!'.format(self.test_path))
+    
+    def export_relationship_graph(self, objs, triples, triple_to_img, graph_num):
+        obj_names = self.vocab['object_idx_to_name']
+        pred_names = self.vocab['pred_idx_to_name']
+
+        # Do it per imag
+        with open(os.path.join(self.test_path, 'test.txt'), 'a') as graph_file:
+            for i in range(max(triple_to_img) + 1):
+                print("===================================", file = graph_file)
+                print("image: {}".format(graph_num), file = graph_file)
+                triple_inds = (triple_to_img == i).nonzero()
+                img_triples = triples[triple_inds].view(-1, 3)
+                # print("triples: {}".format(img_triples))
+                for s, p, o in img_triples:
+                    if(pred_names[p] == '__in_image__'):
+                        continue
+                    s_label = obj_names[objs[s]]
+                    p_label = pred_names[p]
+                    o_label = obj_names[objs[o]]
+                    print("{} --- {} ---> {}".format(s_label, p_label, o_label), file = graph_file)
+                graph_num += 1
+
+        return graph_num

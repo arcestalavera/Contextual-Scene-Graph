@@ -8,34 +8,54 @@ import data_loader as loader
 from cont_model import ContextualSceneModel as CSModel
 
 
-test_model = CSModel()
+# test_model = CSModel()
 
+# data = {}
+# data_file = h5py.File('vg/test.h5', 'r')
+# for k, v in data_file.items():
+# 	print("k: " + str(k))
+# 	# print("v: " + str(v))	
+# 	if k == 'image_paths':
+# 		image_paths = list(v)
+# 	else:
+# 		data[k] = torch.IntTensor(np.asarray(v))
+# 		# print("V: {}".format(data[k]))
+# 		if k == 'relationship_subjects' or k == 'relationship_objects':
+# 			print("here: " + str(data[k]))
 
-# def export_relationship_graph(vocab, triples):
-#     obj_names = vocab['object_idx_to_name']
-#     pred_names = vocab['pred_idx_to_name']
+def export_relationship_graph(vocab, objs, triples, obj_to_img):
+    obj_names = vocab['object_idx_to_name']
+    pred_names = vocab['pred_idx_to_name']
 
-#     s, p, o = triples
+    # Do it per image
+    with open('test.txt', 'w') as graph_file:
+	    for i in range(max(obj_to_img) + 1):
+	    	print("===================================", file = graph_file)
+	    	print("image: {}".format(i), file = graph_file)
+	    	img_inds = (obj_to_img == i).nonzero()
+	    	img_triples = triples[img_inds].view(-1, 3)
+	    	for s, p, o in img_triples:
+		    	if(pred_names[p] == '__in_image__'):
+		    		continue
+		    	s_label = obj_names[objs[s]]
+		    	p_label = pred_names[p]
+		    	o_label = obj_names[objs[o]]
+		    	print("{} --- {} ---> {}".format(s_label, p_label, o_label), file = graph_file)
+	    	print("===================================", file = graph_file)
 
-#     print("S: " + str(s))
-#     print("P: " + str(p))
-#     print("O: " + str(o))
-#     print("S NAME: " + str(obj_names[s]))
-#     print("P NAME: " + str(pred_names[p]))
-#     print("O NAME: " + str(obj_names[o]))
-#     print("{} ---{}---> {}".format(obj_names[s], pred_names[p], obj_names[o]))
+foreground_objs = json.load(open('vg/foreground.json', 'r'))
+vocab = json.load(open('vg/vocab.json', 'r'))
 
+data_loader = loader.get_loader(
+    vocab, foreground_objs['foreground_idx'], 'vg/images', 'vg/test.h5', 2, mode='test')
 
-# vocab = json.load(open('vg/vocab.json', 'r'))
+batch = next(iter(data_loader))
 
-# data_loader = loader.get_loader(
-#     vocab, 'vg/images', 'vg/test.h5', 5, mode='test')
-
-# batch = next(iter(data_loader))
-# imgs, objs, boxes, triples, obj_to_img, triple_to_img = batch
-
-
-# export_relationship_graph(vocab, triples[0])
+# # print("len: {}".format(len(data_loader)))
+# for i, batch in enumerate(data_loader):
+imgs, objs, boxes, triples, obj_to_img, triple_to_img = batch
+# print("OBJ OUT: " + str(objs))
+export_relationship_graph(vocab, objs, triples, obj_to_img)
 
 # z_inds = (obj_to_img == 0).nonzero().squeeze(1)
 # print("OBJS: " + str(objs[z_inds]))

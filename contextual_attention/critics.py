@@ -38,7 +38,6 @@ class ContextualCritic(nn.Module):
     """
     # Get average scores of all objects per image
     """
-    print("x: " + str(x.shape))
     fake_avgs = []
     real_avgs = []
     fake_scores, real_scores = torch.split(x, x.shape[0] // 2, dim = 0)
@@ -51,7 +50,6 @@ class ContextualCritic(nn.Module):
       img_inds = (f_obj_to_img == i).nonzero()
         
       fake_mean = torch.mean(fake_scores[img_inds], dim = 0).unsqueeze(0)
-      print("FAKE SHAPE: " + str(fake_mean.shape))
       real_mean = torch.mean(real_scores[img_inds], dim = 0).unsqueeze(0)
       fake_avgs.append(fake_mean)
       real_avgs.append(real_mean)

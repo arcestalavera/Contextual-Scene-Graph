@@ -105,15 +105,11 @@ def imagenet_deprocess_batch(imgs, rescale=True, convert_range = True):
   return imgs_de
 
 
-def to_var(x, requires_grad=False, volatile=False):
+def to_var(x, requires_grad=False):
   if torch.cuda.is_available():
-    if(volatile):
-      x = Variable(x, volatile=volatile).cuda()
-    else:
       x = x.cuda()
   x.requires_grad_(requires_grad)
   return x
-
 
 def mkdir(directory):
   if not os.path.exists(directory):

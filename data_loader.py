@@ -16,7 +16,7 @@ import json
 
 
 class VGSceneLoader(object):
-    def __init__(self, vocab, imgs_path, h5_path, mode="train", image_size=(256, 256),
+    def __init__(self, vocab, foreground_objs, imgs_path, h5_path, mode="train", image_size=(256, 256),
                  max_objects=10, include_relationships=True, use_orphaned_objects=True):
         """
         # Variables:
@@ -43,6 +43,7 @@ class VGSceneLoader(object):
 
         # Load vocab
         self.vocab = vocab
+        self.foreground_objs = foreground_objs
 
         # Dictionary for the data
         self.data = {}
@@ -77,6 +78,7 @@ class VGSceneLoader(object):
         obj_idxs_with_rels = set()
         obj_idxs_without_rels = set(
             range(self.data['objects_per_image'][index]))
+
         for r_idx in range(self.data['relationships_per_image'][index]):
             s = self.data['relationship_subjects'].data.numpy()[index, r_idx]
             o = self.data['relationship_objects'].data.numpy()[index, r_idx]
@@ -86,20 +88,33 @@ class VGSceneLoader(object):
             obj_idxs_without_rels.discard(o)
 
         # sample objects that have relationship
-        obj_idxs = list(obj_idxs_with_rels)
-        obj_idxs_without_rels = list(obj_idxs_without_rels)
-        if len(obj_idxs) > self.max_objects - 1:
-            obj_idxs = random.sample(obj_idxs, self.max_objects)
+        # check if sampling got a foreground object. If not, sample again
+        error = ''
+        while True:
+            obj_idxs = list(obj_idxs_with_rels)
+            obj_idxs_without_rels = list(obj_idxs_without_rels)
+                
+            if len(obj_idxs) > self.max_objects - 1:
+                error = 'over'
+                obj_idxs = random.sample(obj_idxs, self.max_objects)
+                
+            # if objects with relationships are less than the max objects, sample from objects w/o relationship
+            if len(obj_idxs) < self.max_objects - 1 and self.use_orphaned_objects:
+                error = 'under'
 
-        # if objects with relationships are less than the max objects, sample from objects w/o relationship
-        if len(obj_idxs) < self.max_objects - 1 and self.use_orphaned_objects:
-            num_to_add = self.max_objects - 1 - len(obj_idxs)
-            num_to_add = min(num_to_add, len(obj_idxs_without_rels))
-            obj_idxs += random.sample(obj_idxs_without_rels, num_to_add)
+                num_to_add = self.max_objects - 1 - len(obj_idxs)
+                num_to_add = min(num_to_add, len(obj_idxs_without_rels))
+                obj_idxs += random.sample(obj_idxs_without_rels, num_to_add)
+        
+            if(any(obj_idx in self.data['object_names'][index, obj_idxs] for obj_idx in self.foreground_objs)):
+                    break
+            else:
+                print("Object List: {}".format(self.data['object_names'][index, list(obj_idxs_with_rels)]))
+                print("resampling cause: {}. sampled: {}".format(error, self.data['object_names'][index, obj_idxs]))
+
         O = len(obj_idxs) + 1
 
         objs = torch.LongTensor(O).fill_(-1)
-
         boxes = torch.FloatTensor([[0, 0, 1, 1]]).repeat(O, 1)
         obj_idx_mapping = {}
         for i, obj_idx in enumerate(obj_idxs):
@@ -133,7 +148,6 @@ class VGSceneLoader(object):
             triples.append([i, in_image, O - 1])
 
         triples = torch.LongTensor(triples)
-
 
         return image, objs, boxes, triples
 
@@ -206,11 +220,11 @@ def vg_uncollate_fn(batch):
         out.append((cur_img, cur_objs, cur_boxes, cur_triples))
     return out
 
-def get_loader(vocab, imgs_path, h5_path, batch_size, image_size = (256, 256), mode = 'train'):
+def get_loader(vocab, foreground_objs, imgs_path, h5_path, batch_size, image_size = (256, 256), mode = 'train'):
     """Build and return data loader."""
 
     # dataset = CelebALoader(data_path, attr_list, mode, img_size)
-    dataset = VGSceneLoader(vocab, imgs_path, h5_path, image_size = image_size)
+    dataset = VGSceneLoader(vocab, foreground_objs, imgs_path, h5_path, image_size = image_size)
     shuffle = False
     if mode == 'train':
         shuffle = True

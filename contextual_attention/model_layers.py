@@ -10,8 +10,8 @@ import utils
 class AttentionModule(nn.Module):
     def __init__(self, in_ch):
         super(AttentionModule, self).__init__()
-        self.final_layers = nn.Sequential(nn.Conv2d(in_ch, in_ch, kernel_size=3, stride=1, padding=1, bias=False),
-                                          nn.Conv2d(in_ch, in_ch, kernel_size=3, stride=1, padding=1, bias=False))
+        self.final_layers = nn.Sequential(nn.Conv2d(in_ch, in_ch, kernel_size=3, stride=1, padding=1),
+                                          nn.Conv2d(in_ch, in_ch, kernel_size=3, stride=1, padding=1))
 
         self.zero_pad = nn.ZeroPad2d(1)
 
@@ -106,7 +106,7 @@ class AttentionModule(nn.Module):
         offsets = []
         k = fuse_k
         scale = softmax_scale
-        fuse_weight = utils.to_var(torch.reshape(torch.eye(k), [1, 1, k, k]), volatile = True)
+        fuse_weight = utils.to_var(torch.reshape(torch.eye(k), [1, 1, k, k]))
 
         for xi, wi, raw_wi, mi in zip(f_groups, w_groups, raw_w_groups, mm):
             """
@@ -209,18 +209,17 @@ def make_downsample_layers(in_ch, out_ch=128, first_ch=32, activation=None):
     """
     layers = []
     curr_ch = first_ch  # current channels
-
     layers.append(nn.Conv2d(in_ch, curr_ch, kernel_size=5,
-                            stride=1, padding=1, bias=False))
+                            stride=1, padding=1))
     while(curr_ch < out_ch):
         layers.append(nn.Conv2d(curr_ch, curr_ch * 2,
-                                kernel_size=3, stride=2, padding=1, bias=False))
+                                kernel_size=3, stride=2, padding=1))
         layers.append(nn.Conv2d(curr_ch * 2, curr_ch * 2,
-                                kernel_size=3, stride=1, padding=1, bias=False))
+                                kernel_size=3, stride=1, padding=1))
         curr_ch *= 2
 
     layers.append(nn.Conv2d(curr_ch, curr_ch, kernel_size=3,
-                            stride=1, padding=1, bias=False))
+                            stride=1, padding=1))
 
     if activation != None:
         layers.append(activation)
@@ -258,21 +257,21 @@ def make_upsample_layers(in_ch, first_ch, out_ch=3):
 
     # Conv 11
     layers.append(nn.Conv2d(curr_ch, curr_ch, kernel_size=3,
-                            stride=1, padding=1, bias=False))
+                            stride=1, padding=1))
 
     # Conv 12 - 15
     while(curr_ch > first_ch):
         layers.append(nn.Conv2d(curr_ch, curr_ch,
-                                kernel_size=3, stride=1, padding=1, bias=False))
+                                kernel_size=3, stride=1, padding=1))
         layers.append(nn.Upsample(scale_factor=2, mode='nearest'))
         layers.append(nn.Conv2d(curr_ch, curr_ch // 2,
-                                kernel_size=3, stride=1, padding=1, bias=False))
+                                kernel_size=3, stride=1, padding=1))
         curr_ch = curr_ch // 2
 
     # Conv 16 - 17
     layers.append(nn.Conv2d(curr_ch, curr_ch // 2,
-                            kernel_size=3, stride=1, padding=1, bias=False))
+                            kernel_size=3, stride=1, padding=1))
     layers.append(nn.Conv2d(curr_ch // 2, out_ch,
-                            kernel_size=3, stride=1, padding=1, bias=False))
+                            kernel_size=3, stride=1, padding=1))
 
     return nn.Sequential(*layers)
