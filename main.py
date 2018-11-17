@@ -1,6 +1,7 @@
 import os
 import argparse
-from solver import Solver
+from solver_separate import Solver
+# from solver import Solver
 from data_loader import get_loader
 from torch.backends import cudnn
 from utils import *
@@ -90,7 +91,7 @@ if __name__ == '__main__':
     parser.add_argument('--activation', default='leakyrelu-0.2')
     parser.add_argument('--layout_noise_dim', default=32, type=int)
     parser.add_argument('--use_boxes_pred_after', default=-1, type=int)
-    parser.add_argument('--use_contextual', type=str2bool, default=True)
+    parser.add_argument('--use_contextual', type=str2bool, default=False)
 
     # Generator losses
     parser.add_argument('--mask_loss_weight', default=0, type=float)
@@ -126,6 +127,8 @@ if __name__ == '__main__':
     # Contextual Attention
     # parser.add_argument('--ca_weights', type=str, default=os.path.join(CA_DIR,'tf_weights.json'))
     parser.add_argument('--ca_weights', type=str, default=None)
+    parser.add_argument('--spatial_gamma', type=float, default=0.99)
+    parser.add_argument('--spatial_loss_weight', type=float, default=1.2)
 
     # Critics
     parser.add_argument('--critic_gan_loss', default='wgan')
@@ -135,7 +138,7 @@ if __name__ == '__main__':
     parser.add_argument('--critic_gp_weight', default=10.0, type=float)
     
     # Dataset options common to both VG and COCO
-    parser.add_argument('--image_size', default='64,64', type=int_tuple)
+    parser.add_argument('--image_size', default='128,128', type=int_tuple)
     parser.add_argument('--num_train_samples', default=None, type=int)
     parser.add_argument('--num_val_samples', default=1024, type=int)
     parser.add_argument('--shuffle_val', default=True, type=bool_flag)
@@ -158,13 +161,18 @@ if __name__ == '__main__':
 
     # Training settings
     parser.add_argument('--learning_rate', default=1e-4, type=float)
-    # parser.add_argument('--num_epochs', type=int, default=1)
-    parser.add_argument('--init_iterations', type=int, default=0)
-    parser.add_argument('--num_iterations', type=int, default=1000000)
+    parser.add_argument('--optim_beta1', default=0.5, type=float)
+    parser.add_argument('--optim_beta2', default=0.9, type=float)
+    parser.add_argument('--init_epoch', type=int, default=0)
+    parser.add_argument('--num_epochs', type=int, default=1)
+    # parser.add_argument('--init_iterations', type=int, default=0)
+    # parser.add_argument('--num_iterations', type=int, default=1000000)
     parser.add_argument('--eval_mode_after', type=int, default=100000)
     parser.add_argument('--batch_size', type=int, default=5)
+    parser.add_argument('--patch_size', type=int, default=64)
+
     parser.add_argument('--pretrained_model', type=str, default=None)
-    parser.add_argument('--patch_size', type=int, default=32) 
+    parser.add_argument('--generator_model', type=str, default='vg128')
 
     # Misc
     parser.add_argument('--mode', type=str, default='train',
@@ -178,7 +186,6 @@ if __name__ == '__main__':
     parser.add_argument('--model_save_path', type=str, default='./models')
     parser.add_argument('--sample_path', type=str, default='./samples')
     parser.add_argument('--test_path', type=str, default='./test samples')
-
 
     # Step size
     parser.add_argument('--log_step', type=int, default=100)

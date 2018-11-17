@@ -26,7 +26,7 @@ class Sg2ImModel(nn.Module):
   def __init__(self, vocab, image_size=(64, 64), embedding_dim=64,
                gconv_dim=128, gconv_hidden_dim=512,
                gconv_pooling='avg', gconv_num_layers=5,
-               refinement_network_dims=(1024, 512, 256, 128, 64),
+               refinement_dims=(1024, 512, 256, 128, 64),
                normalization='batch', activation='leakyrelu-0.2',
                mask_size=None, mlp_normalization='none', layout_noise_dim=0,
                **kwargs):
@@ -91,7 +91,7 @@ class Sg2ImModel(nn.Module):
     self.rel_aux_net = build_mlp(rel_aux_layers, batch_norm=mlp_normalization)
 
     refinement_kwargs = {
-      'dims': (gconv_dim + layout_noise_dim,) + refinement_network_dims,
+      'dims': (gconv_dim + layout_noise_dim,) + refinement_dims,
       'normalization': normalization,
       'activation': activation,
     }

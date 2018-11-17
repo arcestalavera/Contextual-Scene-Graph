@@ -20,173 +20,204 @@ import utils
 
 
 def get_gan_losses(gan_type):
-  """
-  Returns the generator and discriminator loss for a particular GAN type.
+    """
+    Returns the generator and discriminator loss for a particular GAN type.
 
-  The returned functions have the following API:
-  loss_g = g_loss(scores_fake)
-  loss_d = d_loss(scores_real, scores_fake)
-  """
-  if gan_type == 'gan':
-    return gan_g_loss, gan_d_loss
-  elif gan_type == 'wgan':
-    return wgan_g_loss, wgan_d_loss
-  elif gan_type == 'lsgan':
-    return lsgan_g_loss, lsgan_d_loss
-  elif gan_type == 'gp':
-    return gradient_penalty
-  else:
-    raise ValueError('Unrecognized GAN type "%s"' % gan_type)
+    The returned functions have the following API:
+    loss_g = g_loss(scores_fake)
+    loss_d = d_loss(scores_real, scores_fake)
+    """
+    if gan_type == 'gan':
+        return gan_g_loss, gan_d_loss
+    elif gan_type == 'wgan':
+        return wgan_g_loss, wgan_d_loss
+    elif gan_type == 'lsgan':
+        return lsgan_g_loss, lsgan_d_loss
+    elif gan_type == 'gp':
+        return gradient_penalty
+    else:
+        raise ValueError('Unrecognized GAN type "%s"' % gan_type)
 
 
 def bce_loss(input, target):
-  """
-  Numerically stable version of the binary cross-entropy loss function.
+    """
+    Numerically stable version of the binary cross-entropy loss function.
 
-  As per https://github.com/pytorch/pytorch/issues/751
-  See the TensorFlow docs for a derivation of this formula:
-  https://www.tensorflow.org/api_docs/python/tf/nn/sigmoid_cross_entropy_with_logits
+    As per https://github.com/pytorch/pytorch/issues/751
+    See the TensorFlow docs for a derivation of this formula:
+    https://www.tensorflow.org/api_docs/python/tf/nn/sigmoid_cross_entropy_with_logits
 
-  Inputs:
-  - input: PyTorch Tensor of shape (N, ) giving scores.
-  - target: PyTorch Tensor of shape (N,) containing 0 and 1 giving targets.
+    Inputs:
+    - input: PyTorch Tensor of shape (N, ) giving scores.
+    - target: PyTorch Tensor of shape (N,) containing 0 and 1 giving targets.
 
-  Returns:
-  - A PyTorch Tensor containing the mean BCE loss over the minibatch of
-    input data.
-  """
-  neg_abs = -input.abs()
-  loss = input.clamp(min=0) - input * target + (1 + neg_abs.exp()).log()
-  return loss.mean()
+    Returns:
+    - A PyTorch Tensor containing the mean BCE loss over the minibatch of
+      input data.
+    """
+    neg_abs = -input.abs()
+    loss = input.clamp(min=0) - input * target + (1 + neg_abs.exp()).log()
+    return loss.mean()
 
 
 def _make_targets(x, y):
-  """
-  Inputs:
-  - x: PyTorch Tensor
-  - y: Python scalar
+    """
+    Inputs:
+    - x: PyTorch Tensor
+    - y: Python scalar
 
-  Outputs:
-  - out: PyTorch Variable with same shape and dtype as x, but filled with y
-  """
-  return torch.full_like(x, y)
+    Outputs:
+    - out: PyTorch Variable with same shape and dtype as x, but filled with y
+    """
+    return torch.full_like(x, y)
 
 
 def gan_g_loss(scores_fake):
-  """
-  Input:
-  - scores_fake: Tensor of shape (N,) containing scores for fake samples
+    """
+    Input:
+    - scores_fake: Tensor of shape (N,) containing scores for fake samples
 
-  Output:
-  - loss: Variable of shape (,) giving GAN generator loss
-  """
-  if scores_fake.dim() > 1:
-    scores_fake = scores_fake.view(-1)
-  y_fake = _make_targets(scores_fake, 1)
-  return bce_loss(scores_fake, y_fake)
+    Output:
+    - loss: Variable of shape (,) giving GAN generator loss
+    """
+    if scores_fake.dim() > 1:
+        scores_fake = scores_fake.view(-1)
+    y_fake = _make_targets(scores_fake, 1)
+    return bce_loss(scores_fake, y_fake)
 
 
 def gan_d_loss(scores_real, scores_fake):
-  """
-  Input:
-  - scores_real: Tensor of shape (N,) giving scores for real samples
-  - scores_fake: Tensor of shape (N,) giving scores for fake samples
+    """
+    Input:
+    - scores_real: Tensor of shape (N,) giving scores for real samples
+    - scores_fake: Tensor of shape (N,) giving scores for fake samples
 
-  Output:
-  - loss: Tensor of shape (,) giving GAN discriminator loss
-  """
-  assert scores_real.size() == scores_fake.size()
-  if scores_real.dim() > 1:
-    scores_real = scores_real.view(-1)
-    scores_fake = scores_fake.view(-1)
-  y_real = _make_targets(scores_real, 1)
-  y_fake = _make_targets(scores_fake, 0)
-  loss_real = bce_loss(scores_real, y_real)
-  loss_fake = bce_loss(scores_fake, y_fake)
-  return loss_real + loss_fake
+    Output:
+    - loss: Tensor of shape (,) giving GAN discriminator loss
+    """
+    assert scores_real.size() == scores_fake.size()
+    if scores_real.dim() > 1:
+        scores_real = scores_real.view(-1)
+        scores_fake = scores_fake.view(-1)
+    y_real = _make_targets(scores_real, 1)
+    y_fake = _make_targets(scores_fake, 0)
+    loss_real = bce_loss(scores_real, y_real)
+    loss_fake = bce_loss(scores_fake, y_fake)
+    return loss_real + loss_fake
 
 
 def wgan_g_loss(scores_fake):
-  """
-  Input:
-  - scores_fake: Tensor of shape (N,) containing scores for fake samples
+    """
+    Input:
+    - scores_fake: Tensor of shape (N,) containing scores for fake samples
 
-  Output:
-  - loss: Tensor of shape (,) giving WGAN generator loss
-  """
-  return -scores_fake.mean()
+    Output:
+    - loss: Tensor of shape (,) giving WGAN generator loss
+    """
+    return -scores_fake.mean()
 
 
 def wgan_d_loss(scores_real, scores_fake):
-  """
-  Input:
-  - scores_real: Tensor of shape (N,) giving scores for real samples
-  - scores_fake: Tensor of shape (N,) giving scores for fake samples
+    """
+    Input:
+    - scores_real: Tensor of shape (N,) giving scores for real samples
+    - scores_fake: Tensor of shape (N,) giving scores for fake samples
 
-  Output:
-  - loss: Tensor of shape (,) giving WGAN discriminator loss
-  """
-  return scores_fake.mean() - scores_real.mean()
+    Output:
+    - loss: Tensor of shape (,) giving WGAN discriminator loss
+    """
+    return scores_fake.mean() - scores_real.mean()
 
 
 def lsgan_g_loss(scores_fake):
-  if scores_fake.dim() > 1:
-    scores_fake = scores_fake.view(-1)
-  y_fake = _make_targets(scores_fake, 1)
-  return F.mse_loss(scores_fake.sigmoid(), y_fake)
+    if scores_fake.dim() > 1:
+        scores_fake = scores_fake.view(-1)
+    y_fake = _make_targets(scores_fake, 1)
+    return F.mse_loss(scores_fake.sigmoid(), y_fake)
 
 
 def lsgan_d_loss(scores_real, scores_fake):
-  assert scores_real.size() == scores_fake.size()
-  if scores_real.dim() > 1:
-    scores_real = scores_real.view(-1)
-    scores_fake = scores_fake.view(-1)
-  y_real = _make_targets(scores_real, 1)
-  y_fake = _make_targets(scores_fake, 0)
-  loss_real = F.mse_loss(scores_real.sigmoid(), y_real)
-  loss_fake = F.mse_loss(scores_fake.sigmoid(), y_fake)
-  return loss_real + loss_fake
+    assert scores_real.size() == scores_fake.size()
+    if scores_real.dim() > 1:
+        scores_real = scores_real.view(-1)
+        scores_fake = scores_fake.view(-1)
+    y_real = _make_targets(scores_real, 1)
+    y_fake = _make_targets(scores_fake, 0)
+    loss_real = F.mse_loss(scores_real.sigmoid(), y_real)
+    loss_fake = F.mse_loss(scores_fake.sigmoid(), y_fake)
+    return loss_real + loss_fake
 
 
-def gradient_penalty(x, y, mask=None, norm=1., f_obj_to_img = None):
-  """
-  # x = interpolated real and fake images
-  # y = scores from critic
-  """
-  grad_outputs = torch.ones(y.size(), device = x.device)
-  gradients = torch.autograd.grad(y, x, create_graph=True, grad_outputs=grad_outputs,
-                                  retain_graph=True, only_inputs=True)[0]
-  
-  if mask is None:
-    mask = torch.ones(gradients.shape, device = x.device)
-  
-  gp_grads = (gradients ** 2) * mask
-  if f_obj_to_img is not None:
-    avg_grads = []
-    # take average of all patches for every image
-    for i in range(max(f_obj_to_img) + 1):
-      inds = (f_obj_to_img == i).nonzero()
-      avg_grad = torch.mean(gp_grads[inds], dim=0)
-      avg_grads.append(avg_grad)
+def gradient_penalty(x, y, mask=None, norm=1., f_obj_to_img=None):
+    """
+    # x = interpolated real and fake images
+    # y = scores from critic
+    """
+    grad_outputs = torch.ones(y.size()).cuda(
+    ) if torch.cuda.is_available() else torch.ones(y.size())
+    gradients = torch.autograd.grad(outputs=y, inputs=x,
+                                    grad_outputs=grad_outputs,
+                                    create_graph=True,
+                                    retain_graph=True,
+                                    only_inputs=True)[0]
+    if mask is None:
+        mask = torch.ones(gradients.shape, device=x.device)
 
-    gp_grads = torch.cat(avg_grads)
+    gp_grads = (gradients ** 2) * mask
+    if f_obj_to_img is not None:
+        avg_grads = []
+        # take average of all patches for every image
+        for i in range(max(f_obj_to_img) + 1):
+            inds = (f_obj_to_img == i).nonzero()
+            avg_grad = torch.mean(gp_grads[inds], dim=0)
+            avg_grads.append(avg_grad)
 
-  slopes = torch.sqrt(utils.reduce_sum(gp_grads, axis = [2,3,1])).view(gp_grads.shape[0], -1)
-  gp_loss = torch.mean((slopes - norm) ** 2)
-  
-  return gp_loss
+        gp_grads = torch.cat(avg_grads)
+
+    slopes = torch.sqrt(utils.reduce_sum(
+        gp_grads, axis=[2, 3, 1])).view(gp_grads.shape[0], -1)
+    gp_loss = torch.mean((slopes - norm) ** 2)
+
+    return gp_loss
+
 
 def random_interpolate(x_real, x_fake):
-  device, dtype = x_real.device, x_real.dtype
-  shape = list(x_real.shape)
+    device, dtype = x_real.device, x_real.dtype
+    shape = list(x_real.shape)
 
-  x_real = torch.reshape(x_real, [shape[0], -1])
-  x_fake = torch.reshape(x_real, [shape[0], -1])
+    x_real = torch.reshape(x_real, [shape[0], -1])
+    x_fake = torch.reshape(x_real, [shape[0], -1])
 
-  t = torch.randn(shape[0], 1, device=device, dtype=dtype)
-  
-  interpolates = t * x_real + (1 - t) * x_fake
-  interpolates = torch.reshape(interpolates, shape)
+    t = torch.randn(shape[0], 1, device=device, dtype=dtype)
 
-  interpolates.requires_grad_(True)
-  return interpolates
+    interpolates = t * x_real + (1 - t) * x_fake
+    interpolates = torch.reshape(interpolates, shape)
+
+    interpolates.requires_grad_(True)
+    return interpolates
+
+
+def spatial_l1(x_real, x_fake, f_obj_to_img, H, W = None, gamma = 0.99):
+    if W is None:
+        W = H
+    mask_size = (H, W)
+    spatial_mask = utils.build_spatial_masks(mask_size, gamma)
+    
+    # get l1 distance between patches of imgs first
+    patch_dist = []
+    for fake, real in zip(x_fake, x_real):
+        patch_loss = torch.abs(fake - real) * spatial_mask
+        patch_dist.append(patch_loss)
+
+    patch_dist = torch.cat(patch_dist)
+    
+    # average per image
+    patch_avg = []
+    for i in range(max(f_obj_to_img + 1)):
+      # get indices of objects that belong to image i
+      img_inds = (f_obj_to_img == i).nonzero()
+      patch_mean = torch.mean(patch_dist[img_inds], dim=0)
+      patch_avg.append(patch_mean)
+
+    patch_avg = torch.cat(patch_avg)
+    return torch.mean(patch_avg)

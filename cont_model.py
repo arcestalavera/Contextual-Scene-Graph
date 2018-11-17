@@ -131,8 +131,8 @@ class ContextualSceneCritic(nn.Module):
         self.local_critic = ContextualCritic(is_local = True)
         self.global_critic = ContextualCritic(is_local = False)
 
-    def forward(self, local_x, global_x, f_obj_to_img):
-        local_out = self.local_critic(local_x, f_obj_to_img)
+    def forward(self, local_x, global_x, f_obj_to_img, get_ave = False):
+        local_out = self.local_critic(local_x, f_obj_to_img, get_ave)
         global_out = self.global_critic(global_x)
 
         return local_out, global_out

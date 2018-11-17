@@ -41,7 +41,6 @@ class PatchDiscriminator(nn.Module):
 
   def forward(self, x, layout=None):
     if layout is not None:
-      print("LAYOUT IS " + str(type(layout)))
       x = torch.cat([x, layout], dim=1)
     return self.cnn(x)
 

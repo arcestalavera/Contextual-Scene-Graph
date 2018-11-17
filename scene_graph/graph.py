@@ -93,16 +93,12 @@ class GraphTripleConv(nn.Module):
     # Break apart indices for subjects and objects; these have shape (T,)
     s_idx = edges[:, 0].contiguous()
     o_idx = edges[:, 1].contiguous()
-
-    # print("EDGES: " + str(edges.shape))
-    # print("S: " + str(min(s_idx)) + " : " + str(max(s_idx)))
-    # print("O: " + str(min(o_idx)) + " : " + str(max(o_idx)))
     
     # Get current vectors for subjects and objects; these have shape (T, Din)
     """
-    cur_s_vecs: vs  
+    cur_s_vecs: vi
     pred_vecs: vr
-    cur_o_ves: vo
+    cur_o_ves: vj
     """
     # print("OBJS: " + str(obj_vecs))
     cur_s_vecs = obj_vecs[s_idx]
@@ -111,13 +107,9 @@ class GraphTripleConv(nn.Module):
     # Get current vectors for triples; shape is (T, 3 * Din)
     # Pass through net1 to get new triple vecs; shape is (T, 2 * H + Dout)
     """
-    concatenate vs, vr, vo then input to network1
+    concatenate vi, vr, vj then input to network1
     """
-    # print("s: " + str(cur_s_vecs.shape))
-    # print("pred: " + str(pred_vecs.shape))
-    # print("o: " + str(cur_o_vecs.shape))
     cur_t_vecs = torch.cat([cur_s_vecs, pred_vecs, cur_o_vecs], 1)
-    # print("cur_t_vecs:" + str(cur_t_vecs.shape))
     new_t_vecs = self.net1(cur_t_vecs)
 
     # Break apart into new s, p, and o vecs; s and o vecs have shape (T, H) and

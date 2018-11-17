@@ -460,7 +460,6 @@ class Solver(object):
         if skip_pixel_loss:
             l1_pixel_weight = 0
 
-        # Local patches for hand picked foreground objects
         l1_pixel_loss = F.l1_loss(imgs_pred, imgs)
 
         total_loss = self.add_loss(total_loss, l1_pixel_loss, losses, 'L1_pixel_loss',
@@ -582,16 +581,16 @@ class Solver(object):
                 triples = to_var(triples)
                 obj_to_img = to_var(obj_to_img)
 
-                # Foreground objects
-                f_inds = [i for i, obj in enumerate(
-                    objs) if obj in self.foreground_objs]
-                f_boxes = boxes[f_inds]
-                f_obj_to_img = obj_to_img[f_inds]
-
-                ca_masks = build_masks(imgs, f_boxes, f_obj_to_img)
-                ca_masks = to_var(ca_masks)        
-
                 if(self.use_contextual):
+                    # Foreground objects
+                    f_inds = [i for i, obj in enumerate(
+                        objs) if obj in self.foreground_objs]
+                    f_boxes = boxes[f_inds]
+                    f_obj_to_img = obj_to_img[f_inds]
+
+                    ca_masks = build_masks(imgs, f_boxes, f_obj_to_img)
+                    ca_masks = to_var(ca_masks)
+
                     fake_images, _, _, _ = self.generator(
                         objs, triples, obj_to_img, ca_masks)
                 else:

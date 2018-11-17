@@ -40,7 +40,6 @@ def crop_bbox_batch(feats, bbox, bbox_to_feats, HH, WW=None, backend='cudnn'):
   """
   if backend == 'cudnn':
     return crop_bbox_batch_cudnn(feats, bbox, bbox_to_feats, HH, WW)
-  print("IM HERE NOW")
   N, C, H, W = feats.size()
   B = bbox.size(0)
   if WW is None: WW = HH
